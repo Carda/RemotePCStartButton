@@ -1,24 +1,22 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <WebServer.h>
+#include <ESP8266WebServer.h>
 
-WebServer webServ(80);
+ESP8266WebServer webServ(80);
 char buffer[200];
 StaticJsonDocument<200> jDoc;
 
 bool isConnected;
 bool isStarted;
 
-int ESP_PIN_RELAY = 4;
+int ESP_PIN_RELAY = 12;
 const String API_START_ARG = "on";
 const String API_STOP_ARG = "off";
+const String API_TRIG_ARG = "trig";
 const String CONTENT_TYPE = "application/json";
 const int HTTP_SUCCESS = 200;
 const int HTTP_INTERNAL_ERROR = 500;
-
-IPAddress espServerip(192, 168, 0, 199);
-IPAddress espGateway(192, 168, 0, 1);
-IPAddress espSubnet(255, 255, 255, 0);
+const int BLUELED = 4;
 
 void BlinkBuiltinLed(int blinkTimeout)
 {
@@ -28,9 +26,9 @@ void BlinkBuiltinLed(int blinkTimeout)
   delay(blinkTimeout);
 }
 
-void SwitchOnBuiltinLed(bool isOn)
+void SwitchBuiltinLed(bool isOn)
 {
-  digitalWrite(LED_BUILTIN, (isOn ? HIGH : LOW));
+  digitalWrite(BLUELED, (isOn ? HIGH : LOW));
 }
 
 void SetRelayStatus()
@@ -40,7 +38,8 @@ void SetRelayStatus()
   digitalWrite(ESP_PIN_RELAY, (isStarted ? HIGH : LOW));
 }
 
-void ClearBuffer(){
+void ClearBuffer()
+{
   memset(buffer, 0, sizeof(buffer));
 }
 
@@ -56,75 +55,78 @@ void GetStatus()
 
 void Start()
 {
-  try
+  ClearBuffer();
+  if (webServ.hasArg("plain"))
   {
-    ClearBuffer();
-    if (webServ.hasArg("plain"))
+    String body = webServ.arg("plain");
+    Serial.println("Deserialization is started for Start.!");
+    DeserializationError error = deserializeJson(jDoc, body);
+    Serial.println("Deserialization is finished for Start.!");
+    if (error)
     {
-      String body = webServ.arg("plain");
-      Serial.println("Deserialization is started for Start.!");
-      DeserializationError error = deserializeJson(jDoc, body);
-      Serial.println("Deserialization is finished for Start.!");
-      if (error)
-      {
-        Serial.println("JSon deserialization Error..! : ");
-        Serial.println(error.f_str());
-      }
-
-      if (jDoc["power"] == API_START_ARG)
-      {
-        Serial.println("Relay is opening.!");
-        isStarted = true;
-        digitalWrite(ESP_PIN_RELAY, LOW);
-      }
-      GetStatus();
+      Serial.println("JSon deserialization Error..! : ");
+      Serial.println(error.f_str());
     }
-  }
-  catch (const std::exception &e)
-  {
-    Serial.println("Hata .!");
-    Serial.println(e.what());
-    jDoc.clear();
-    jDoc["error"] = e.what();
-    serializeJson(jDoc, buffer);
-    webServ.send(HTTP_INTERNAL_ERROR, CONTENT_TYPE, buffer);
+
+    if (jDoc["power"] == API_START_ARG)
+    {
+      Serial.println("Relay is opening.!");
+      isStarted = true;
+      digitalWrite(ESP_PIN_RELAY, LOW);
+    }
+    GetStatus();
   }
 }
 
 void Stop()
 {
-  try
+  ClearBuffer();
+  if (webServ.hasArg("plain"))
   {
-    ClearBuffer();
-    if (webServ.hasArg("plain"))
+    String body = webServ.arg("plain");
+    Serial.println("Deserialization is starting for Stop.!");
+    DeserializationError error = deserializeJson(jDoc, body);
+    Serial.println("Deserialization is finished for Stop.!");
+    if (error)
     {
-      String body = webServ.arg("plain");
-      Serial.println("Deserialization is starting for Stop.!");
-      DeserializationError error = deserializeJson(jDoc, body);
-      Serial.println("Deserialization is finished for Stop.!");
-      if (error)
-      {
-        Serial.println("JSon deserialization Error..! : ");
-        Serial.println(error.f_str());
-      }
-
-      if (jDoc["power"] == API_STOP_ARG)
-      {
-        Serial.println("Relay is closing.!");
-        isStarted = false;
-        digitalWrite(ESP_PIN_RELAY, HIGH);
-      }
-      GetStatus();
+      Serial.println("JSon deserialization Error..! : ");
+      Serial.println(error.f_str());
     }
+
+    if (jDoc["power"] == API_STOP_ARG)
+    {
+      Serial.println("Relay is closing.!");
+      isStarted = false;
+      digitalWrite(ESP_PIN_RELAY, HIGH);
+    }
+    GetStatus();
   }
-  catch (const std::exception &e)
+}
+
+void Trigger()
+{
+  ClearBuffer();
+  if (webServ.hasArg("plain"))
   {
-    Serial.println("Hata .!");
-    Serial.println(e.what());
-    jDoc.clear();
-    jDoc["error"] = e.what();
-    serializeJson(jDoc, buffer);
-    webServ.send(HTTP_INTERNAL_ERROR, CONTENT_TYPE, buffer);
+    String body = webServ.arg("plain");
+    Serial.println("Deserialization is starting for Stop.!");
+    DeserializationError error = deserializeJson(jDoc, body);
+    Serial.println("Deserialization is finished for Stop.!");
+    if (error)
+    {
+      Serial.println("JSon deserialization Error..! : ");
+      Serial.println(error.f_str());
+    }
+
+    if (jDoc["power"] == API_TRIG_ARG)
+    {
+      Serial.println("Relay is closing.!");
+      isStarted = false;
+      digitalWrite(ESP_PIN_RELAY, LOW);
+      delay(2000);
+      digitalWrite(ESP_PIN_RELAY, HIGH);
+    }
+    GetStatus();
   }
 }
 
@@ -133,6 +135,7 @@ void ConfigurateRouting()
   webServ.on("/getStatus", GetStatus);
   webServ.on("/start", HTTP_POST, Start);
   webServ.on("/stop", HTTP_POST, Stop);
+  webServ.on("/trigger", HTTP_POST, Trigger);
 }
 
 void setup()
@@ -141,7 +144,7 @@ void setup()
   Serial.begin(115200);
   Serial.println("Setup is starting");
   pinMode(ESP_PIN_RELAY, OUTPUT);
-  digitalWrite(ESP_PIN_RELAY,HIGH);
+  digitalWrite(ESP_PIN_RELAY, HIGH);
   pinMode(LED_BUILTIN, OUTPUT);
 
   WiFi.mode(WIFI_STA);
@@ -152,7 +155,7 @@ void setup()
     BlinkBuiltinLed(500);
   }
 
-  SwitchOnBuiltinLed(isConnected = true);
+  SwitchBuiltinLed(isConnected = true);
 
   if (isConnected)
     Serial.println("Wifi Connection established");
@@ -162,7 +165,6 @@ void setup()
   ConfigurateRouting();
   webServ.begin();
   Serial.println("Web Server Started!");
-  
 }
 
 void loop()
