@@ -123,7 +123,7 @@ void Trigger()
       Serial.println("Relay is closing.!");
       isStarted = false;
       digitalWrite(ESP_PIN_RELAY, LOW);
-      delay(2000);
+      delay(500);
       digitalWrite(ESP_PIN_RELAY, HIGH);
     }
     GetStatus();
