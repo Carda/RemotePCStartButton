@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESP8266WebServer.h>
+#include <WiFiManager.h>
 
 ESP8266WebServer webServ(80);
 char buffer[200];
@@ -17,6 +18,7 @@ const String CONTENT_TYPE = "application/json";
 const int HTTP_SUCCESS = 200;
 const int HTTP_INTERNAL_ERROR = 500;
 const int BLUELED = 4;
+String newHostName = "ArdaTV_RemoteControl";
 
 void BlinkBuiltinLed(int blinkTimeout)
 {
@@ -24,6 +26,10 @@ void BlinkBuiltinLed(int blinkTimeout)
   delay(blinkTimeout);
   digitalWrite(LED_BUILTIN, LOW);
   delay(blinkTimeout);
+}
+
+void initiateBlinkTask(){
+  
 }
 
 void SwitchBuiltinLed(bool isOn)
@@ -109,6 +115,7 @@ void Trigger()
   if (webServ.hasArg("plain"))
   {
     String body = webServ.arg("plain");
+    Serial.println(body);
     Serial.println("Deserialization is starting for Stop.!");
     DeserializationError error = deserializeJson(jDoc, body);
     Serial.println("Deserialization is finished for Stop.!");
@@ -118,12 +125,19 @@ void Trigger()
       Serial.println(error.f_str());
     }
 
+    String duration = jDoc["duration"];
+    int dura = 0;
+    if (!duration.isEmpty())
+    {
+      dura = duration.toInt();
+    }
+
     if (jDoc["power"] == API_TRIG_ARG)
     {
       Serial.println("Relay is closing.!");
       isStarted = false;
       digitalWrite(ESP_PIN_RELAY, LOW);
-      delay(500);
+      delay(dura);
       digitalWrite(ESP_PIN_RELAY, HIGH);
     }
     GetStatus();
@@ -147,9 +161,15 @@ void setup()
   digitalWrite(ESP_PIN_RELAY, HIGH);
   pinMode(LED_BUILTIN, OUTPUT);
 
-  WiFi.mode(WIFI_STA);
-  // isConnected = wifiMan.autoConnect("Remote Button Connector", "arda8585");
-  WiFi.begin("Arda_wireless2G4", "Busifrebuyuk3");
+  BlinkBuiltinLed(1500);
+
+  WiFiManager wm;
+
+  wm.setAPStaticIPConfig(IPAddress(192, 168, 33, 1), IPAddress(192, 168, 33, 1), IPAddress(255, 255, 255, 0));
+  isConnected = wm.autoConnect("Remote Button for ArdaTV", "arda8585");
+
+  WiFi.hostname(newHostName.c_str());
+
   while (WiFi.status() != WL_CONNECTED)
   {
     BlinkBuiltinLed(500);
@@ -162,6 +182,9 @@ void setup()
   else
     Serial.println("Wifi connection failed.!");
 
+  Serial.print("Mac Address : ");
+  Serial.println(WiFi.macAddress());
+
   ConfigurateRouting();
   webServ.begin();
   Serial.println("Web Server Started!");
@@ -169,5 +192,11 @@ void setup()
 
 void loop()
 {
+  if (!isConnected || WiFi.status() != WL_CONNECTED)
+  {
+    delay(3000);
+    ESP.restart();
+  }
+
   webServ.handleClient();
 }
